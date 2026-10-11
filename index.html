@@ -52,8 +52,9 @@ button.primary{background:var(--accent); color:var(--accent-ink)}
 button.ghost{background:transparent; color:var(--accent)}
 button:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
 .status{color:var(--ok); font-weight:700; min-height:1.7em}
-.opt{display:flex; gap:.5rem; align-items:center; color:var(--muted); font-size:.95rem; margin:.6rem 0 0}
-.opt input{width:1.1rem; height:1.1rem; accent-color:var(--accent)}
+.opts{border:0; padding:0; margin:.4rem 0 0}
+.opt{display:flex; gap:.5rem; align-items:flex-start; color:var(--muted); font-size:.95rem; font-weight:400; margin:.45rem 0 0}
+.opt input{flex:none; width:1.1rem; height:1.1rem; margin-top:.3rem; accent-color:var(--accent)}
 .count{color:var(--muted); font-size:.9rem; margin-top:.35rem}
 </style>
 </head>
@@ -64,8 +65,14 @@ button:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
 
   <label for="src">ここに貼り付け</label>
   <textarea id="src" placeholder="Ctrl+V で貼り付け"></textarea>
-  <label class="opt"><input type="checkbox" id="keepPara"> 空行（段落の区切り）は残す</label>
-  <label class="opt"><input type="checkbox" id="tightEn" checked> 日本語と英数字の間のスペースを消す（英単語の前後で間が空くのを防ぐ）</label>
+  <fieldset class="opts">
+    <label class="opt"><input type="checkbox" id="tightEn" checked> 日本語と英数字の間のスペースを消す（英単語の前後で間が空くのを防ぐ）</label>
+    <label class="opt"><input type="checkbox" id="halfWidth" checked> 全角の英数字を半角にする（ＥＳＧ → ESG）</label>
+    <label class="opt"><input type="checkbox" id="minus" checked> ▲・△を「マイナス」にする（▲12億円 → マイナス12億円）</label>
+    <label class="opt"><input type="checkbox" id="symbols" checked> 飾りの記号と注釈マークを消す（■ ● ◆ ※1 など）</label>
+    <label class="opt"><input type="checkbox" id="pageNum" checked> 数字だけの行（ページ番号）を消す</label>
+    <label class="opt"><input type="checkbox" id="keepPara"> 空行（段落の区切り）は残す</label>
+  </fieldset>
 
   <div class="row">
     <button class="primary" id="copyBtn">もう一度コピー</button>
@@ -80,9 +87,15 @@ button:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
 <script>
 const src=document.getElementById('src'), out=document.getElementById('out');
 const statusEl=document.getElementById('status'), countEl=document.getElementById('count');
-const keepPara=document.getElementById('keepPara');
-const tightEn=document.getElementById('tightEn');
+const opts=[...document.querySelectorAll('.opts input')];
+const opt=Object.fromEntries(opts.map(o=>[o.id,o]));
 const JA='[\\u3000-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef]';
+// ページ番号だけの行（12 / - 12 - / p.12 / 12/80）
+const PAGE_LINE=/^[ \t　]*(?:[-–—][ \t]*)?(?:p\.?[ \t]*)?\d{1,4}(?:[ \t]*\/[ \t]*\d{1,4})?(?:[ \t]*[-–—])?[ \t　]*(?:\n|$)/gim;
+// 行頭の箇条書き記号・注釈マーク。文の区切りとして目印（\u0001）に置き換える
+const LINE_HEAD=/(^|\n)[ \t　]*(?:[■□●○◆◇▼▽★☆◎▶▷►•◼◻✓✔➢➤・]|[▲△](?![ 　]*\d)|※(?:\d{1,2}(?!\d))?|[＊*](?:\d{1,2}(?!\d))?)+[ \t　]*/g;
+// 文中の記号・注釈マーク（※1 *2 （注1））
+const INLINE_SYM=/[■□●○◆◇▼▽★☆◎▶▷►•◼◻✓✔➢➤]|[▲△](?![ 　]*\d)|※(?:\d{1,2}(?!\d))?|[＊*](?:\d{1,2}(?!\d))?|[（(]注[ 　]?\d*[）)]/g;
 
 function joinLines(t){
   // 英単語どうしの行末はスペースでつなぎ、ハイフン切れは結合。日本語はそのまま連結。
@@ -92,14 +105,20 @@ function joinLines(t){
 }
 function clean(text){
   let t=text.replace(/\r\n?/g,'\n').replace(/\u00A0/g,' ');
-  if(keepPara.checked){
+  if(opt.halfWidth.checked) t=t.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  if(opt.minus.checked) t=t.replace(/[\u25B2\u25B3][ \u3000]*(?=\d)/g,'\u30DE\u30A4\u30CA\u30B9');
+  if(opt.pageNum.checked) t=t.replace(PAGE_LINE,'');
+  if(opt.symbols.checked) t=t.replace(LINE_HEAD,'$1\u0001').replace(INLINE_SYM,'');
+  if(opt.keepPara.checked){
     t=t.split(/\n\s*\n+/).map(p=>joinLines(p.trim())).filter(Boolean).join('\n');
   }else{
     t=joinLines(t.replace(/\n\s*\n+/g,'\n').trim());
   }
-  if(tightEn.checked){
+  // \u7B87\u6761\u66F8\u304D\u306E\u533A\u5207\u308A\uFF1A\u6BB5\u843D\u982D\u306A\u3089\u6D88\u3057\u3001\u53E5\u8AAD\u70B9\u304C\u306A\u3051\u308C\u3070\u300C\u3002\u300D\u3092\u88DC\u3063\u3066\u9593\u3092\u4F5C\u308B
+  t=t.replace(/(^|\n)\u0001+/g,'$1').replace(/([\u3002\uFF0E.\uFF01!\uFF1F?\u3001\uFF0C,\uFF1A:])?\u0001+/g,(m,p)=>p||'\u3002');
+  if(opt.tightEn.checked){
     t=t.replace(new RegExp('('+JA+')[ \\u3000]+(?=[A-Za-z0-9])','g'),'$1')
-       .replace(new RegExp('([A-Za-z0-9.,%)])[ \\u3000]+(?='+JA+')','g'),'$1');
+       .replace(new RegExp('([A-Za-z0-9.,%)\\u2080-\\u2089])[ \\u3000]+(?='+JA+')','g'),'$1');
   }
   return t.replace(/ {2,}/g,' ');
 }
@@ -119,8 +138,15 @@ async function run(){
 }
 src.addEventListener('paste',()=>setTimeout(run,0));
 src.addEventListener('input',()=>{ out.value=clean(src.value); countEl.textContent=out.value?`${out.value.length}文字`:''; statusEl.textContent=''; });
-keepPara.addEventListener('change',run);
-tightEn.addEventListener('change',run);
+// チェックボックスの状態を次回も覚えておく
+try{
+  const saved=JSON.parse(localStorage.getItem('kaigyo-opts')||'{}');
+  opts.forEach(o=>{ if(typeof saved[o.id]==='boolean') o.checked=saved[o.id]; });
+}catch(e){}
+opts.forEach(o=>o.addEventListener('change',()=>{
+  try{ localStorage.setItem('kaigyo-opts',JSON.stringify(Object.fromEntries(opts.map(x=>[x.id,x.checked])))); }catch(e){}
+  run();
+}));
 document.getElementById('copyBtn').addEventListener('click',run);
 document.getElementById('clearBtn').addEventListener('click',()=>{ src.value=''; out.value=''; countEl.textContent=''; statusEl.textContent=''; src.focus(); });
 </script>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>改行けし</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef2f0; --panel:#ffffff; --ink:#1d2b28; --muted:#5d6d69;
+  --line:#c9d4d0; --accent:#1f7a68; --accent-ink:#ffffff; --ok:#1f7a68;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141a19; --panel:#1c2422; --ink:#e3ebe8; --muted:#9aaba6;
+    --line:#33413e; --accent:#4fbfa5; --accent-ink:#0f1614; --ok:#4fbfa5;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141a19; --panel:#1c2422; --ink:#e3ebe8; --muted:#9aaba6;
+  --line:#33413e; --accent:#4fbfa5; --accent-ink:#0f1614; --ok:#4fbfa5;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  line-height:1.7;
+}
+main{max-width:46rem; margin:0 auto; padding:2rem 1.25rem 3rem}
+h1{font-size:1.75rem; margin:0 0 .25rem; letter-spacing:.02em}
+.lead{color:var(--muted); margin:0 0 1.5rem}
+label{display:block; font-weight:700; margin:0 0 .4rem}
+textarea{
+  width:100%; min-height:11rem; resize:vertical;
+  font:inherit; font-size:1rem; color:var(--ink);
+  background:var(--panel); border:1.5px solid var(--line);
+  border-radius:10px; padding:.85rem 1rem;
+}
+textarea:focus{outline:3px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+.row{display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; margin:1rem 0 1.75rem}
+button{
+  font:inherit; font-weight:700; font-size:1rem; cursor:pointer;
+  border-radius:999px; padding:.65rem 1.4rem; border:1.5px solid var(--accent);
+}
+button.primary{background:var(--accent); color:var(--accent-ink)}
+button.ghost{background:transparent; color:var(--accent)}
+button:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
+.status{color:var(--ok); font-weight:700; min-height:1.7em}
+.opt{display:flex; gap:.5rem; align-items:center; color:var(--muted); font-size:.95rem; margin:.6rem 0 0}
+.opt input{width:1.1rem; height:1.1rem; accent-color:var(--accent)}
+.count{color:var(--muted); font-size:.9rem; margin-top:.35rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>改行けし</h1>
+  <p class="lead">PDFからコピーした文章を下に貼り付けると、改行を消してクリップボードにコピーし直す。そのままVOICEVOXに貼ればよい。</p>
+
+  <label for="src">ここに貼り付け</label>
+  <textarea id="src" placeholder="Ctrl+V で貼り付け"></textarea>
+  <label class="opt"><input type="checkbox" id="keepPara"> 空行（段落の区切り）は残す</label>
+  <label class="opt"><input type="checkbox" id="tightEn" checked> 日本語と英数字の間のスペースを消す（英単語の前後で間が空くのを防ぐ）</label>
+
+  <div class="row">
+    <button class="primary" id="copyBtn">もう一度コピー</button>
+    <button class="ghost" id="clearBtn">クリア</button>
+    <span class="status" id="status" role="status"></span>
+  </div>
+
+  <label for="out">改行を消した文章</label>
+  <textarea id="out" readonly></textarea>
+  <div class="count" id="count"></div>
+</main>
+<script>
+const src=document.getElementById('src'), out=document.getElementById('out');
+const statusEl=document.getElementById('status'), countEl=document.getElementById('count');
+const keepPara=document.getElementById('keepPara');
+const tightEn=document.getElementById('tightEn');
+const JA='[\\u3000-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef]';
+
+function joinLines(t){
+  // 英単語どうしの行末はスペースでつなぎ、ハイフン切れは結合。日本語はそのまま連結。
+  return t.replace(/([A-Za-z])-\n([a-z])/g,'$1$2')
+          .replace(/([A-Za-z0-9,.;:!?)])\n([A-Za-z0-9(])/g,'$1 $2')
+          .replace(/[ \t]*\n[ \t]*/g,'');
+}
+function clean(text){
+  let t=text.replace(/\r\n?/g,'\n').replace(/\u00A0/g,' ');
+  if(keepPara.checked){
+    t=t.split(/\n\s*\n+/).map(p=>joinLines(p.trim())).filter(Boolean).join('\n');
+  }else{
+    t=joinLines(t.replace(/\n\s*\n+/g,'\n').trim());
+  }
+  if(tightEn.checked){
+    t=t.replace(new RegExp('('+JA+')[ \\u3000]+(?=[A-Za-z0-9])','g'),'$1')
+       .replace(new RegExp('([A-Za-z0-9.,%)])[ \\u3000]+(?='+JA+')','g'),'$1');
+  }
+  return t.replace(/ {2,}/g,' ');
+}
+async function copy(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    try{ out.focus(); out.select(); const ok=document.execCommand('copy'); out.blur(); return ok; }
+    catch(e2){ return false; }
+  }
+}
+async function run(){
+  const r=clean(src.value);
+  out.value=r;
+  countEl.textContent=r?`${r.length}文字`:'';
+  if(!r){ statusEl.textContent=''; return; }
+  statusEl.textContent = (await copy(r)) ? 'コピーした' : '下の欄を選択してコピーしてほしい';
+}
+src.addEventListener('paste',()=>setTimeout(run,0));
+src.addEventListener('input',()=>{ out.value=clean(src.value); countEl.textContent=out.value?`${out.value.length}文字`:''; statusEl.textContent=''; });
+keepPara.addEventListener('change',run);
+tightEn.addEventListener('change',run);
+document.getElementById('copyBtn').addEventListener('click',run);
+document.getElementById('clearBtn').addEventListener('click',()=>{ src.value=''; out.value=''; countEl.textContent=''; statusEl.textContent=''; src.focus(); });
+</script>
+</body>
+</html>
